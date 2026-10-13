@@ -111,19 +111,15 @@
                 <div class="space-y-2">
                     <label class="flex items-center gap-2 text-sm cursor-pointer">
                         <input type="radio" value="split" x-model="form.splitType" class="text-amber-600 focus:ring-amber-500">
-                        <span> 两人平分（共同消费，双方各承担 50%）</span>
-                    </label>
-                    <label class="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="radio" value="personal" x-model="form.splitType" class="text-amber-600 focus:ring-amber-500">
-                        <span>👤 各自独立（纯属付款人自己的花费，不分摊）</span>
+                        <span>🤝 两人平分（共同消费，双方各承担 50%）</span>
                     </label>
                     <label class="flex items-center gap-2 text-sm cursor-pointer">
                         <input type="radio" value="proxy_hong_for_min" x-model="form.splitType" class="text-amber-600 focus:ring-amber-500">
-                        <span> 代支付：Hong 帮 Min 垫付</span>
+                        <span>💳 代支付：Hong 帮 Min 垫付</span>
                     </label>
                     <label class="flex items-center gap-2 text-sm cursor-pointer">
                         <input type="radio" value="proxy_min_for_hong" x-model="form.splitType" class="text-amber-600 focus:ring-amber-500">
-                        <span> 代支付：Min 帮 Hong 垫付</span>
+                        <span>💳 代支付：Min 帮 Hong 垫付</span>
                     </label>
                 </div>
             </div>
@@ -296,7 +292,6 @@
 
                 getSplitTypeText(type) {
                     if (type === 'split') return '🤝 两人平分';
-                    if (type === 'personal') return '👤 各自独立';
                     if (type === 'proxy_hong_for_min') return '💳 Hong代Min付';
                     if (type === 'proxy_min_for_hong') return '💳 Min代Hong付';
                     return type;
@@ -412,13 +407,6 @@
                             // 两人平分
                             hongShareTotal += cny / 2;
                             minShareTotal += cny / 2;
-                        } else if (bill.splitType === 'personal') {
-                            // 各自独立不分摊（全算在付款人头上）
-                            if (bill.payer === 'Hong') {
-                                hongShareTotal += cny;
-                            } else {
-                                minShareTotal += cny;
-                            }
                         } else if (bill.splitType === 'proxy_hong_for_min') {
                             // Hong 代 Min 支付：全额算作 Min 应当承担的个人花费
                             minShareTotal += cny;
