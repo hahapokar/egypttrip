@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🇪🇬 埃及行旅行记账与分账助手 (手动刷新版)</title>
+    <!-- 引入 Tailwind CSS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- 引入 Alpine.js 用于极简响应式逻辑 -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans antialiased min-h-screen pb-12" x-data="tripApp()">
+
+    <!-- 顶部导航 -->
+    <header class="bg-amber-600 text-white shadow-md">
+        <div class="max-w-3xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+            <div class="flex items-center gap-2">
+                <h1 class="text-xl font-bold flex items-center gap-2">
+                    <span>🇪🇬</span> 埃及行记账分账
+                </h1>
+                <button @click="fetchData()" class="text-xs bg-amber-700 hover:bg-amber-800 px-2.5 py-1 rounded-full transition flex items-center gap-1 shadow-sm" title="点击刷新最新数据">
+                    🔄 <span x-text="syncStatus">刷新</span>
+                </button>
+            </div>
+            <div class="text-xs bg-amber-700 px-3 py-1.5 rounded-full flex items-center gap-2">
+                <span>汇率(CNY):</span>
+                <span>USD:<input type="number" step="0.01" x-model.number="currentRate.USD" @change="saveData" class="w-12 bg-amber-800 text-white px-1 rounded text-center"></span>
+                <span>EGP:<input type="number" step="0.001" x-model.number="currentRate.EGP" @change="saveData" class="w-12 bg-amber-800 text-white px-1 rounded text-center"></span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-4 mt-6 space-y-6">
+
+        <!-- Tab 切换 -->
+        <div class="flex bg-white rounded-xl shadow-sm p-1 border border-gray-100">
+            <button @click="activeTab = 'add'" :class="activeTab === 'add' ? 'bg-amber-600 text-white' : 'text-gray-600 hover:bg-gray-50'" class="flex-1 py-2.5 rounded-lg font-medium text-sm transition text-center">
+                ✍️ 记一笔
+            </button>
+            <button @click="activeTab = 'bills'" :class="activeTab === 'bills' ? 'bg-amber-600 text-white' : 'text-gray-600 hover:bg-gray-50'" class="flex-1 py-2.5 rounded-lg font-medium text-sm transition text-center">
+                📋 账单明细 (<span x-text="bills.length"></span>)
+            </button>
+            <button @click="activeTab = 'settle'" :class="activeTab === 'settle' ? 'bg-amber-600 text-white' : 'text-gray-600 hover:bg-gray-50'" class="flex-1 py-2.5 rounded-lg font-medium text-sm transition text-center">
+                ⚖️ 最终清算
+            </button>
+        </div>
+
+        <!-- 1. 记账表单页面 -->
+        <div x-show="activeTab === 'add'" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+            <h2 class="text-lg font-bold text-gray-900 border-b pb-3">添加新消费</h2>
+
+            <!-- 日期与地点 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">日期</label>
+                    <input type="date" x-model="form.date" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">地点 / 城市</label>
+                    <input type="text" x-model="form.location" placeholder="例如：开罗 / 卢克索" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                </div>
+            </div>
+
+            <!-- 金额与币种 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">金额与币种</label>
+                    <div class="flex gap-2">
+                        <input type="number" step="0.01" x-model.number="form.amount" placeholder="0.00" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                        <select x-model="form.currency" class="border rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                            <option value="CNY">人民币 (CNY)</option>
+                            <option value="USD">美元 (USD)</option>
+                            <option value="EGP">埃镑 (EGP)</option>
+                        </select>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1" x-show="form.amount">
+                        折算人民币: <span class="font-semibold text-amber-600" x-text="'¥ ' + calculateCNY(form.amount, form.currency).toFixed(2)"></span>
+                    </p>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">消费类别</label>
+                    <select x-model="form.category" class="w-full border rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                        <option value="交通">🚗 交通</option>
+                        <option value="餐饮">🍔 餐饮</option>
+                        <option value="门票">🎫 门票</option>
+                        <option value="酒店">🏨 酒店</option>
+                        <option value="其他">📦 其他</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 谁付的款 -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-500 mb-1">谁支付的？</label>
+                <div class="grid grid-cols-2 gap-3">
+                    <button type="button" @click="form.payer = '我'" :class="form.payer === '我' ? 'border-amber-600 bg-amber-50 text-amber-700 font-semibold' : 'border-gray-200 text-gray-600'" class="border rounded-lg py-2 text-sm transition text-center">
+                        我支付
+                    </button>
+                    <button type="button" @click="form.payer = '同伴'" :class="form.payer === '同伴' ? 'border-amber-600 bg-amber-50 text-amber-700 font-semibold' : 'border-gray-200 text-gray-600'" class="border rounded-lg py-2 text-sm transition text-center">
+                        同伴支付
+                    </button>
+                </div>
+            </div>
+
+            <!-- 分摊方式 -->
+            <div class="space-y-2">
+                <label class="block text-xs font-semibold text-gray-500">分摊模式</label>
+                <div class="space-y-2">
+                    <label class="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="radio" value="split" x-model="form.splitType" class="text-amber-600 focus:ring-amber-500">
+                        <span>两人平分（共同消费，记入两人分摊账目）</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="radio" value="personal" x-model="form.splitType" class="text-amber-600 focus:ring-amber-500">
+                        <span>各自独立支付不分摊（纯属付款人自己的花费）</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 备注 -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-500 mb-1">备注说明</label>
+                <input type="text" x-model="form.note" placeholder="例如：吉萨金字塔门票 / 包车费" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+            </div>
+
+            <!-- 提交按钮 -->
+            <button @click="addBill" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium py-2.5 rounded-xl transition shadow-sm text-sm">
+                确认添加账单
+            </button>
+        </div>
+
+        <!-- 2. 账单明细页面 -->
+        <div x-show="activeTab === 'bills'" class="space-y-4">
+            <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                <span class="text-sm text-gray-600">总计消费笔数：<strong x-text="bills.length"></strong> 笔</span>
+                <button @click="clearAll" class="text-xs text-red-500 hover:underline">清空所有数据</button>
+            </div>
+
+            <template x-for="(bill, index) in bills.slice().reverse()" :key="bill.id">
+                <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex justify-between items-start">
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold px-2 py-0.5 bg-gray-100 rounded text-gray-600" x-text="bill.category"></span>
+                            <span class="text-xs text-gray-400" x-text="bill.date + ' (' + (bill.location || '未知地点') + ') '"></span>
+                        </div>
+                        <p class="text-sm font-medium text-gray-800" x-text="bill.note || '无备注'"></p>
+                        <div class="text-xs text-gray-500 flex gap-3">
+                            <span>付款人: <strong class="text-gray-700" x-text="bill.payer"></strong></span>
+                            <span>模式: <span x-text="bill.splitType === 'split' ? '🤝 两人平分' : '👤 各自独立'"></span></span>
+                        </div>
+                    </div>
+                    <div class="text-right flex flex-col items-end gap-1">
+                        <span class="text-sm font-bold text-gray-900" x-text="bill.amount + ' ' + bill.currency"></span>
+                        <span class="text-xs text-amber-600 font-semibold" x-text="'≈ ¥ ' + bill.amountCNY.toFixed(2)"></span>
+                        <button @click="deleteBill(bill.id)" class="text-xs text-red-400 hover:text-red-600 mt-1">删除</button>
+                    </div>
+                </div>
+            </template>
+
+            <div x-show="bills.length === 0" class="text-center py-12 text-gray-400 text-sm">
+                还没有添加任何账单，快去记一笔吧~
+            </div>
+        </div>
+
+        <!-- 3. 最终清算页面 (Net-off) -->
+        <div x-show="activeTab === 'settle'" class="space-y-6">
+            <!-- 总览卡片 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-2">
+                    <h3 class="text-sm font-bold text-gray-500">“我”的财务统计</h3>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">实际垫付总额:</span>
+                        <span class="font-bold text-gray-900" x-text="'¥ ' + stats.myPaidTotal.toFixed(2)"></span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">最终应承担总额:</span>
+                        <span class="font-bold text-gray-900" x-text="'¥ ' + stats.myShareTotal.toFixed(2)"></span>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-2">
+                    <h3 class="text-sm font-bold text-gray-500">“同伴”的财务统计</h3>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">实际垫付总额:</span>
+                        <span class="font-bold text-gray-900" x-text="'¥ ' + stats.partnerPaidTotal.toFixed(2)"></span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">最终应承担总额:</span>
+                        <span class="font-bold text-gray-900" x-text="'¥ ' + stats.partnerShareTotal.toFixed(2)"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Net-off 最终清算结论卡片 -->
+            <div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center space-y-3">
+                <h3 class="text-sm font-semibold text-amber-800">💡 最终清算结果 (Net-off)</h3>
+                <div class="text-2xl font-black text-amber-900" x-text="settlementResultText"></div>
+                <p class="text-xs text-amber-700">根据两人各自垫付和分摊比例计算所得,可直接按此金额转账结清。</p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- JS 手动刷新核心逻辑 -->
+    <script>
+        // ⚠️ 请在这里填入你部署的 Cloudflare Worker 网址
+        const API_BASE = "https://withered-voice-9fbf.hahapokar.workers.dev/";
+
+        function tripApp() {
+            return {
+                activeTab: 'add',
+                syncStatus: '点击刷新',
+                currentRate: {
+                    USD: 7.25,
+                    EGP: 0.15
+                },
+                form: {
+                    date: new Date().toISOString().split('T')[0],
+                    location: '',
+                    amount: '',
+                    currency: 'CNY',
+                    category: '餐饮',
+                    payer: '你',
+                    splitType: 'split',
+                    note: ''
+                },
+                bills: [],
+
+                init() {
+                    // 页面初次打开时自动加载一次云端数据
+                    this.fetchData();
+                },
+
+                async fetchData() {
+                    try {
+                        this.syncStatus = '同步中...';
+                        let res = await fetch(`${API_BASE}/api/bills`);
+                        if (res.ok) {
+                            let data = await res.json();
+                            this.bills = data.bills || [];
+                            if (data.rates) {
+                                this.currentRate = data.rates;
+                            }
+                            this.syncStatus = '已最新';
+                        } else {
+                            this.syncStatus = '刷新失败';
+                        }
+                    } catch (e) {
+                        this.syncStatus = '网络错误';
+                    }
+                },
+
+                async saveData() {
+                    try {
+                        this.syncStatus = '保存中...';
+                        let payload = {
+                            bills: this.bills,
+                            rates: this.currentRate
+                        };
+                        let res = await fetch(`${API_BASE}/api/bills`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        if (res.ok) {
+                            this.syncStatus = '已同步';
+                        } else {
+                            this.syncStatus = '保存失败';
+                        }
+                    } catch (e) {
+                        this.syncStatus = '同步失败';
+                    }
+                },
+
+                calculateCNY(amount, currency) {
+                    if (!amount) return 0;
+                    if (currency === 'CNY') return amount;
+                    if (currency === 'USD') return amount * this.currentRate.USD;
+                    if (currency === 'EGP') return amount * this.currentRate.EGP;
+                    return amount;
+                },
+
+                async addBill() {
+                    if (!this.form.amount || this.form.amount <= 0) {
+                        alert('请输入有效的金额！');
+                        return;
+                    }
+
+                    const amountCNY = this.calculateCNY(this.form.amount, this.form.currency);
+
+                    const newBill = {
+                        id: Date.now(),
+                        date: this.form.date,
+                        location: this.form.location,
+                        amount: this.form.amount,
+                        currency: this.form.currency,
+                        amountCNY: amountCNY,
+                        category: this.form.category,
+                        payer: this.form.payer,
+                        splitType: this.form.splitType,
+                        note: this.form.note
+                    };
+
+                    this.bills.push(newBill);
+                    await this.saveData();
+
+                    // 重置部分表单
+                    this.form.amount = '';
+                    this.form.note = '';
+                    this.activeTab = 'bills';
+                },
+
+                async deleteBill(id) {
+                    if (confirm('确定要删除这笔账单吗？')) {
+                        this.bills = this.bills.filter(b => b.id !== id);
+                        await this.saveData();
+                    }
+                },
+
+                async clearAll() {
+                    if (confirm('确定要清空所有账单数据吗？此操作不可恢复！')) {
+                        this.bills = [];
+                        await this.saveData();
+                    }
+                },
+
+                get stats() {
+                    let myPaidTotal = 0;
+                    let partnerPaidTotal = 0;
+                    let myShareTotal = 0;
+                    let partnerShareTotal = 0;
+
+                    this.bills.forEach(bill => {
+                        const cny = bill.amountCNY;
+
+                        // 统计谁付的钱
+                        if (bill.payer === '你') {
+                            myPaidTotal += cny;
+                        } else {
+                            partnerPaidTotal += cny;
+                        }
+
+                        // 统计各自应承担的钱
+                        if (bill.splitType === 'split') {
+                            myShareTotal += cny / 2;
+                            partnerShareTotal += cny / 2;
+                        } else {
+                            if (bill.payer === '你') {
+                                myShareTotal += cny;
+                            } else {
+                                partnerShareTotal += cny;
+                            }
+                        }
+                    });
+
+                    return {
+                        myPaidTotal,
+                        partnerPaidTotal,
+                        myShareTotal,
+                        partnerShareTotal
+                    };
+                },
+
+                get settlementResultText() {
+                    const diff = this.stats.myPaidTotal - this.stats.myShareTotal;
+                    if (Math.abs(diff) < 0.01) {
+                        return '🎉 两人已完美平衡，无需互转！';
+                    } else if (diff > 0) {
+                        return `同伴 需要向 你 转账 ¥ ${diff.toFixed(2)}`;
+                    } else {
+                        return `你 需要向 同伴 转账 ¥ ${Math.abs(diff).toFixed(2)}`;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
