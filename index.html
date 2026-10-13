@@ -290,4 +290,164 @@
                     if (!amount) return 0;
                     if (currency === 'CNY') return amount;
                     if (currency === 'USD') return amount * this.currentRate.USD;
-                    if (currency === 'EGP')
+                    if (currency === 'EGP') return amount * this.currentRate.EGP;
+                    return amount;
+                },
+
+                getSplitTypeText(type) {
+                    if (type === 'split') return '🤝 两人平分';
+                    if (type === 'personal') return '👤 各自独立';
+                    if (type === 'proxy_hong_for_min') return '💳 Hong代Min付';
+                    if (type === 'proxy_min_for_hong') return '💳 Min代Hong付';
+                    return type;
+                },
+
+                async saveOrUpdateBill() {
+                    if (!this.form.amount || this.form.amount <= 0) {
+                        alert('请输入有效的金额！');
+                        return;
+                    }
+
+                    const amountCNY = this.calculateCNY(this.form.amount, this.form.currency);
+
+                    if (this.editingId) {
+                        // 修改现有账单
+                        const index = this.bills.findIndex(b => b.id === this.editingId);
+                        if (index !== -1) {
+                            this.bills[index] = {
+                                ...this.bills[index],
+                                date: this.form.date,
+                                location: this.form.location,
+                                amount: this.form.amount,
+                                currency: this.form.currency,
+                                amountCNY: amountCNY,
+                                category: this.form.category,
+                                payer: this.form.payer,
+                                splitType: this.form.splitType,
+                                note: this.form.note
+                            };
+                        }
+                        this.editingId = null;
+                    } else {
+                        // 新增账单
+                        const newBill = {
+                            id: Date.now(),
+                            date: this.form.date,
+                            location: this.form.location,
+                            amount: this.form.amount,
+                            currency: this.form.currency,
+                            amountCNY: amountCNY,
+                            category: this.form.category,
+                            payer: this.form.payer,
+                            splitType: this.form.splitType,
+                            note: this.form.note
+                        };
+                        this.bills.push(newBill);
+                    }
+
+                    await this.saveData();
+                    this.resetForm();
+                    this.activeTab = 'bills';
+                },
+
+                editBill(bill) {
+                    this.editingId = bill.id;
+                    this.form = {
+                        date: bill.date,
+                        location: bill.location || '',
+                        amount: bill.amount,
+                        currency: bill.currency,
+                        category: bill.category,
+                        payer: bill.payer,
+                        splitType: bill.splitType,
+                        note: bill.note || ''
+                    };
+                    this.activeTab = 'add';
+                },
+
+                cancelEdit() {
+                    this.editingId = null;
+                    this.resetForm();
+                },
+
+                resetForm() {
+                    this.form.amount = '';
+                    this.form.note = '';
+                    this.editingId = null;
+                },
+
+                async deleteBill(id) {
+                    if (confirm('确定要删除这笔账单吗？')) {
+                        this.bills = this.bills.filter(b => b.id !== id);
+                        await this.saveData();
+                    }
+                },
+
+                async clearAll() {
+                    if (confirm('确定要清空所有账单数据吗？此操作不可恢复！')) {
+                        this.bills = [];
+                        this.editingId = null;
+                        await this.saveData();
+                    }
+                },
+
+                get stats() {
+                    let hongPaidTotal = 0;
+                    let minPaidTotal = 0;
+                    let hongShareTotal = 0;
+                    let minShareTotal = 0;
+
+                    this.bills.forEach(bill => {
+                        const cny = bill.amountCNY;
+
+                        // 1. 谁实际掏钱付的款（增加垫付总额）
+                        if (bill.payer === 'Hong') {
+                            hongPaidTotal += cny;
+                        } else if (bill.payer === 'Min') {
+                            minPaidTotal += cny;
+                        }
+
+                        // 2. 最终各自应承担的费用计算
+                        if (bill.splitType === 'split') {
+                            // 两人平分
+                            hongShareTotal += cny / 2;
+                            minShareTotal += cny / 2;
+                        } else if (bill.splitType === 'personal') {
+                            // 各自独立不分摊（全算在付款人头上）
+                            if (bill.payer === 'Hong') {
+                                hongShareTotal += cny;
+                            } else {
+                                minShareTotal += cny;
+                            }
+                        } else if (bill.splitType === 'proxy_hong_for_min') {
+                            // Hong 代 Min 支付：全额算作 Min 应当承担的个人花费
+                            minShareTotal += cny;
+                        } else if (bill.splitType === 'proxy_min_for_hong') {
+                            // Min 代 Hong 支付：全额算作 Hong 应当承担的个人花费
+                            hongShareTotal += cny;
+                        }
+                    });
+
+                    return {
+                        hongPaidTotal,
+                        minPaidTotal,
+                        hongShareTotal,
+                        minShareTotal
+                    };
+                },
+
+                get settlementResultText() {
+                    const diff = this.stats.hongPaidTotal - this.stats.hongShareTotal;
+                    if (Math.abs(diff) < 0.01) {
+                        return '🎉 两人已完美平衡，无需互转！';
+                    } else if (diff > 0) {
+                        return `Min 需要向 Hong 转账 ¥ ${diff.toFixed(2)}`;
+                    } else {
+                        return `Hong 需要向 Min 转账 ¥ ${Math.abs(diff).toFixed(2)}`;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
