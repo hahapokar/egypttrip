@@ -18,8 +18,9 @@
                 <h1 class="text-xl font-bold flex items-center gap-2">
                     <span>🇪🇬</span> 埃及行记账分账
                 </h1>
-                <button @click="fetchData()" class="text-xs bg-amber-700 hover:bg-amber-800 px-2.5 py-1 rounded-full transition flex items-center gap-1 shadow-sm" title="点击刷新最新数据">
-                    🔄 <span x-text="syncStatus">刷新</span>
+                <!-- 页头按钮改为“更新数据”，点击强制从云端拉取最新数据 -->
+                <button @click="fetchData(true)" class="text-xs bg-amber-700 hover:bg-amber-800 px-2.5 py-1 rounded-full transition flex items-center gap-1 shadow-sm" title="点击从云端更新最新数据">
+                    🔄 <span x-text="headerStatus">更新数据</span>
                 </button>
             </div>
             <div class="text-xs bg-amber-700 px-3 py-1.5 rounded-full flex items-center gap-2">
@@ -133,6 +134,16 @@
             <!-- 提交按钮 -->
             <button @click="saveOrUpdateBill" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium py-2.5 rounded-xl transition shadow-sm text-sm" x-text="editingId ? '保存修改' : '确认添加账单'">
             </button>
+
+            <!-- 独立在表单底部的实时保存/同步状态提示 -->
+            <div x-show="actionStatus" class="p-3 rounded-lg text-xs font-medium text-center transition-all"
+                 :class="{
+                     'bg-amber-50 text-amber-800 border border-amber-200': actionType === 'loading',
+                     'bg-green-50 text-green-800 border border-green-200': actionType === 'success',
+                     'bg-orange-50 text-orange-800 border border-orange-200': actionType === 'warning'
+                 }"
+                 x-text="actionStatus">
+            </div>
         </div>
 
         <!-- 2. 账单明细页面 -->
@@ -212,14 +223,16 @@
 
     </main>
 
-    <!-- JS 加固逻辑 -->
+    <!-- JS 逻辑 -->
     <script>
         const API_BASE = "https://egypt-trip.hahapokar.workers.dev";
 
         function tripApp() {
             return {
                 activeTab: 'add',
-                syncStatus: '点击刷新',
+                headerStatus: '更新数据',
+                actionStatus: '',      // 底部操作状态文本
+                actionType: 'loading', // 状态类型：loading, success, warning
                 editingId: null,
                 currentRate: {
                     USD: 6.72,
@@ -238,48 +251,49 @@
                 bills: [],
 
                 init() {
-                    // 初始化时先从本地缓存读取（如果有的话作为防丢兜底），然后立即从云端同步
+                    // 进入网页时优先读取本地缓存作为秒开兜底，同时立刻从云端拉取最新数据
                     const localCached = localStorage.getItem('egypt_bills_backup');
                     if (localCached) {
                         try { this.bills = JSON.parse(localCached); } catch(e){}
                     }
-                    this.fetchData();
+                    this.fetchData(false);
                 },
 
-                async fetchData() {
+                async fetchData(isManualClick = false) {
                     try {
-                        this.syncStatus = '同步中...';
+                        if (isManualClick) {
+                            this.headerStatus = '更新中...';
+                        }
                         let res = await fetch(`${API_BASE}/api/bills`);
                         if (res.ok) {
                             let data = await res.json();
                             if (data.bills) {
                                 this.bills = data.bills;
-                                // 每次成功获取云端数据，顺手在本地做个备份
                                 localStorage.setItem('egypt_bills_backup', JSON.stringify(this.bills));
                             }
                             if (data.rates) {
                                 this.currentRate = data.rates;
                             }
-                            this.syncStatus = '已最新';
+                            if (isManualClick) {
+                                this.headerStatus = '已最新';
+                                setTimeout(() => { this.headerStatus = '更新数据'; }, 2000);
+                            }
                         } else {
-                            this.syncStatus = '刷新失败';
+                            if (isManualClick) {
+                                this.headerStatus = '更新失败';
+                                setTimeout(() => { this.headerStatus = '更新数据'; }, 2000);
+                            }
                         }
                     } catch (e) {
-                        this.syncStatus = '网络离线(使用本地缓存)';
+                        if (isManualClick) {
+                            this.headerStatus = '网络离线';
+                            setTimeout(() => { this.headerStatus = '更新数据'; }, 2000);
+                        }
                     }
                 },
 
                 async saveData() {
                     try {
-                        this.syncStatus = '保存中...';
-                        
-                        // 【防覆盖优化】：先从云端拉取一次最新状态，确保合并后再提交，防止两人同时操作时覆盖
-                        let latestRes = await fetch(`${API_BASE}/api/bills`);
-                        if (latestRes.ok) {
-                            let latestData = await latestRes.json();
-                            // 如果云端有数据，以本地为主但比对合并（或者这里直接做本地备份防护）
-                        }
-
                         // 本地实时备份
                         localStorage.setItem('egypt_bills_backup', JSON.stringify(this.bills));
 
@@ -292,15 +306,17 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(payload)
                         });
+                        
                         if (res.ok) {
-                            this.syncStatus = '已同步';
+                            this.actionType = 'success';
+                            this.actionStatus = '✨ 云端保存成功！';
                         } else {
-                            this.syncStatus = '保存失败';
-                            alert('网络异常，云端保存失败！但已在本地备份。');
+                            this.actionType = 'warning';
+                            this.actionStatus = '⚠️ 云端保存失败，但本地缓存已成功保存。';
                         }
                     } catch (e) {
-                        this.syncStatus = '同步失败';
-                        alert('网络连接错误，保存未成功传至云端。');
+                        this.actionType = 'warning';
+                        this.actionStatus = '⚠️ 网络未连接，已安全保存至本地缓存。';
                     }
                 },
 
@@ -324,6 +340,10 @@
                         alert('请输入有效的金额！');
                         return;
                     }
+
+                    // 在表单下方显示正在保存
+                    this.actionType = 'loading';
+                    this.actionStatus = '⏳ 正在保存账单...';
 
                     const amountCNY = this.calculateCNY(this.form.amount, this.form.currency);
 
@@ -362,7 +382,12 @@
 
                     await this.saveData();
                     this.resetForm();
-                    this.activeTab = 'bills';
+                    
+                    // 延迟 1.5 秒后自动切到明细页，让用户看清保存成功的提示
+                    setTimeout(() => {
+                        this.activeTab = 'bills';
+                        this.actionStatus = '';
+                    }, 1200);
                 },
 
                 editBill(bill) {
@@ -377,12 +402,14 @@
                         splitType: bill.splitType,
                         note: bill.note || ''
                     };
+                    this.actionStatus = '';
                     this.activeTab = 'add';
                 },
 
                 cancelEdit() {
                     this.editingId = null;
                     this.resetForm();
+                    this.actionStatus = '';
                 },
 
                 resetForm() {
@@ -399,7 +426,6 @@
                 },
 
                 async clearAll() {
-                    // 【防误触加固】：清空需要二次输入或确认，防止手滑点错
                     const confirmText = prompt('⚠️ 警告：您正在尝试【清空所有账单】！\n此操作不可恢复。如确定要清空，请输入大写字母 "DELETE"：');
                     if (confirmText === 'DELETE') {
                         this.bills = [];
