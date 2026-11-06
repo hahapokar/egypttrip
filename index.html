@@ -3,22 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🇪🇬 埃及行旅行记账与分账助手 (安全加固版)</title>
+    <title>🇪🇬 埃及行旅行记账与分账助手 (导出与打印增强版)</title>
     <!-- 引入 Tailwind CSS CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <!-- 引入 Alpine.js 用于极简响应式逻辑 -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <style>
+        /* 针对 PDF / 打印优化的专属样式 */
+        @media print {
+            body {
+                background-color: #ffffff !important;
+                color: #000000 !important;
+                font-size: 12pt !important;
+            }
+            header, button, nav, .no-print, input[type="radio"], select, input[type="number"], input[type="text"], input[type="date"] {
+                display: none !important;
+            }
+            .print-only {
+                display: block !important;
+            }
+            main {
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .bg-white, .bg-amber-50, .shadow-sm {
+                background: none !important;
+                box-shadow: none !important;
+                border: 1px solid #e5e7eb !important;
+                border-radius: 8px !important;
+                page-break-inside: avoid;
+            }
+            table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+            }
+            th, td {
+                border: 1px solid #d1d5db !important;
+                padding: 8px !important;
+            }
+            .text-amber-600, .text-amber-700, .text-amber-800, .text-amber-900 {
+                color: #b45309 !important;
+            }
+        }
+    </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased min-h-screen pb-12" x-data="tripApp()">
 
     <!-- 顶部导航 -->
-    <header class="bg-amber-600 text-white shadow-md">
+    <header class="bg-amber-600 text-white shadow-md no-print">
         <div class="max-w-3xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-2">
             <div class="flex items-center gap-2">
                 <h1 class="text-xl font-bold flex items-center gap-2">
                     <span>🇪🇬</span> 埃及行记账分账
                 </h1>
-                <!-- 页头按钮改为“更新数据”，点击强制从云端拉取最新数据 -->
                 <button @click="fetchData(true)" class="text-xs bg-amber-700 hover:bg-amber-800 px-2.5 py-1 rounded-full transition flex items-center gap-1 shadow-sm" title="点击从云端更新最新数据">
                     🔄 <span x-text="headerStatus">更新数据</span>
                 </button>
@@ -31,10 +70,16 @@
         </div>
     </header>
 
+    <!-- 打印专用的抬头页眉 -->
+    <div class="hidden print-only mb-6 border-b pb-4">
+        <h1 class="text-2xl font-bold text-gray-900">🇪🇬 埃及行程最终账单与结算报告</h1>
+        <p class="text-xs text-gray-500 mt-1">生成时间: <span x-text="new Date().toLocaleDateString()"></span> | 汇率参考: USD = <span x-text="currentRate.USD"></span>, EGP = <span x-text="currentRate.EGP"></span></p>
+    </div>
+
     <main class="max-w-3xl mx-auto px-4 mt-6 space-y-6">
 
-        <!-- Tab 切换 -->
-        <div class="flex bg-white rounded-xl shadow-sm p-1 border border-gray-100">
+        <!-- Tab 切换按钮（打印时自动隐藏） -->
+        <div class="flex bg-white rounded-xl shadow-sm p-1 border border-gray-100 no-print">
             <button @click="activeTab = 'add'" :class="activeTab === 'add' ? 'bg-amber-600 text-white' : 'text-gray-600 hover:bg-gray-50'" class="flex-1 py-2.5 rounded-lg font-medium text-sm transition text-center">
                 <span x-text="editingId ? '✏️ 修改账单' : '✍️ 记一笔'"></span>
             </button>
@@ -42,12 +87,12 @@
                 📋 账单明细 (<span x-text="bills.length"></span>)
             </button>
             <button @click="activeTab = 'settle'" :class="activeTab === 'settle' ? 'bg-amber-600 text-white' : 'text-gray-600 hover:bg-gray-50'" class="flex-1 py-2.5 rounded-lg font-medium text-sm transition text-center">
-                ⚖️ 最终结算
+                ⚖️ 统计与结算
             </button>
         </div>
 
         <!-- 1. 记账/修改表单页面 -->
-        <div x-show="activeTab === 'add'" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+        <div x-show="activeTab === 'add'" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5 no-print">
             <div class="flex justify-between items-center border-b pb-3">
                 <h2 class="text-lg font-bold text-gray-900" x-text="editingId ? '修改消费记录' : '添加新消费'"></h2>
                 <button x-show="editingId" @click="cancelEdit" class="text-xs text-gray-500 hover:underline">取消修改</button>
@@ -116,11 +161,15 @@
                     </label>
                     <label class="flex items-center gap-2 text-sm cursor-pointer">
                         <input type="radio" value="proxy_hong_for_min" x-model="form.splitType" class="text-amber-600 focus:ring-amber-500">
-                        <span>Hong 帮 Min 垫付</span>
+                        <span>Hong 帮 Min 垫付 (全额算 Min)</span>
                     </label>
                     <label class="flex items-center gap-2 text-sm cursor-pointer">
                         <input type="radio" value="proxy_min_for_hong" x-model="form.splitType" class="text-amber-600 focus:ring-amber-500">
-                        <span>Min 帮 Hong 垫付</span>
+                        <span>Min 帮 Hong 垫付 (全额算 Hong)</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="radio" value="personal" x-model="form.splitType" class="text-amber-600 focus:ring-amber-500">
+                        <span>个人自付（不平分也不代垫，个人私用）</span>
                     </label>
                 </div>
             </div>
@@ -135,7 +184,6 @@
             <button @click="saveOrUpdateBill" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium py-2.5 rounded-xl transition shadow-sm text-sm" x-text="editingId ? '保存修改' : '确认添加账单'">
             </button>
 
-            <!-- 独立在表单底部的实时保存/同步状态提示 -->
             <div x-show="actionStatus" class="p-3 rounded-lg text-xs font-medium text-center transition-all"
                  :class="{
                      'bg-amber-50 text-amber-800 border border-amber-200': actionType === 'loading',
@@ -148,9 +196,14 @@
 
         <!-- 2. 账单明细页面 -->
         <div x-show="activeTab === 'bills'" class="space-y-4">
-            <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+            <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 no-print">
                 <span class="text-sm text-gray-600">总计消费笔数：<strong x-text="bills.length"></strong> 笔</span>
-                <button @click="clearAll" class="text-xs text-red-500 hover:underline">清空所有数据</button>
+                <div class="flex items-center gap-3">
+                    <button @click="exportCSV" class="text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-1.5 rounded-lg transition font-medium flex items-center gap-1">
+                        📊 导出 Excel (CSV)
+                    </button>
+                    <button @click="clearAll" class="text-xs text-red-500 hover:underline">清空数据</button>
+                </div>
             </div>
 
             <template x-for="(bill, index) in bills.slice().reverse()" :key="bill.id">
@@ -158,20 +211,20 @@
                     <div class="space-y-1">
                         <div class="flex items-center gap-2">
                             <span class="text-xs font-bold px-2 py-0.5 bg-gray-100 rounded text-gray-600" x-text="bill.category"></span>
-                            <span class="text-xs text-gray-400" x-text="bill.date + ' (' + (bill.location || '未知地点') + ') '"></span>
+                            <span class="text-xs text-gray-400" x-text="bill.date + ' (' + (bill.location || '未知地点') + ')'"></span>
                         </div>
                         <p class="text-sm font-medium text-gray-800" x-text="bill.note || '无备注'"></p>
                         <div class="text-xs text-gray-500 flex flex-wrap gap-3">
                             <span>付款人: <strong class="text-gray-700" x-text="bill.payer"></strong></span>
                             <span>模式: 
-                                <span class="font-medium text-amber-700" x-text="getSplitTypeText(bill.splitType)"></span>
+                                <span class="font-medium text-amber-700" x-text="getSplitTypeText(bill.splitType, bill.payer)"></span>
                             </span>
                         </div>
                     </div>
                     <div class="text-right flex flex-col items-end gap-1">
                         <span class="text-sm font-bold text-gray-900" x-text="bill.amount + ' ' + bill.currency"></span>
                         <span class="text-xs text-amber-600 font-semibold" x-text="'≈ ¥ ' + bill.amountCNY.toFixed(2)"></span>
-                        <div class="flex gap-2 mt-1">
+                        <div class="flex gap-2 mt-1 no-print">
                             <button @click="editBill(bill)" class="text-xs text-blue-500 hover:underline">修改</button>
                             <button @click="deleteBill(bill.id)" class="text-xs text-red-400 hover:text-red-600">删除</button>
                         </div>
@@ -184,18 +237,32 @@
             </div>
         </div>
 
-        <!-- 3. 最终结算页面 (Net-off) -->
+        <!-- 3. 统计与结算页面 (含导出与 PDF 打印操作栏) -->
         <div x-show="activeTab === 'settle'" class="space-y-6">
-            <!-- 总览卡片 -->
+            
+            <!-- 导出工具栏（打印时隐藏） -->
+            <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 no-print">
+                <span class="text-sm font-semibold text-gray-700">📄 导出与保存报告</span>
+                <div class="flex gap-2">
+                    <button @click="printPDF" class="text-xs bg-amber-600 hover:bg-amber-700 text-white font-medium px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 shadow-sm">
+                        🖨️ 导出/保存为 PDF
+                    </button>
+                    <button @click="exportCSV" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-3.5 py-2 rounded-lg transition flex items-center gap-1">
+                        📊 导出 Excel (CSV)
+                    </button>
+                </div>
+            </div>
+
+            <!-- 个人财务统计卡片 -->
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-2">
                     <h3 class="text-sm font-bold text-gray-600">“Hong”的财务统计</h3>
                     <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">实际垫付总额:</span>
+                        <span class="text-gray-600">实际垫付/支出总额:</span>
                         <span class="font-bold text-gray-900" x-text="'¥ ' + stats.hongPaidTotal.toFixed(2)"></span>
                     </div>
                     <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">最终应承担总额:</span>
+                        <span class="text-gray-600">最终应分摊/承担总额:</span>
                         <span class="font-bold text-gray-900" x-text="'¥ ' + stats.hongShareTotal.toFixed(2)"></span>
                     </div>
                 </div>
@@ -203,11 +270,11 @@
                 <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-2">
                     <h3 class="text-sm font-bold text-gray-600">“Min”的财务统计</h3>
                     <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">实际垫付总额:</span>
+                        <span class="text-gray-600">实际垫付/支出总额:</span>
                         <span class="font-bold text-gray-900" x-text="'¥ ' + stats.minPaidTotal.toFixed(2)"></span>
                     </div>
                     <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">最终应承担总额:</span>
+                        <span class="text-gray-600">最终应分摊/承担总额:</span>
                         <span class="font-bold text-gray-900" x-text="'¥ ' + stats.minShareTotal.toFixed(2)"></span>
                     </div>
                 </div>
@@ -217,7 +284,50 @@
             <div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center space-y-3">
                 <h3 class="text-sm font-semibold text-amber-800">💡 最终结算结果 (Net-off)</h3>
                 <div class="text-2xl font-black text-amber-900" x-text="settlementResultText"></div>
-                <p class="text-xs text-amber-700">根据两人各自垫付和分摊（含平分与代付）计算所得,可直接按此金额转账结清。</p>
+                <p class="text-xs text-amber-700">根据两人各自垫付和分摊（含平分、代付与自付）计算所得,可直接按此金额转账结清。</p>
+            </div>
+
+            <!-- 个人各自的分类汇总清单 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- Hong 的分类汇总 -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-3">
+                    <h3 class="text-sm font-bold text-gray-800 border-b pb-2 flex justify-between items-center">
+                        <span>🏷️ Hong 各分类承担明细</span>
+                        <span class="text-xs font-normal text-gray-500">单位: ¥</span>
+                    </h3>
+                    <div class="space-y-2">
+                        <template x-for="item in hongCategoryStats" :key="item.category">
+                            <div class="flex justify-between text-xs py-1.5 border-b border-gray-50">
+                                <span class="text-gray-600 font-medium" x-text="item.category"></span>
+                                <span class="font-semibold text-gray-800" x-text="'¥ ' + item.amount.toFixed(2)"></span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="pt-2 flex justify-between text-sm font-bold text-amber-900 border-t">
+                        <span>Hong 承担总计</span>
+                        <span x-text="'¥ ' + stats.hongShareTotal.toFixed(2)"></span>
+                    </div>
+                </div>
+
+                <!-- Min 的分类汇总 -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-3">
+                    <h3 class="text-sm font-bold text-gray-800 border-b pb-2 flex justify-between items-center">
+                        <span>🏷️ Min 各分类承担明细</span>
+                        <span class="text-xs font-normal text-gray-500">单位: ¥</span>
+                    </h3>
+                    <div class="space-y-2">
+                        <template x-for="item in minCategoryStats" :key="item.category">
+                            <div class="flex justify-between text-xs py-1.5 border-b border-gray-50">
+                                <span class="text-gray-600 font-medium" x-text="item.category"></span>
+                                <span class="font-semibold text-gray-800" x-text="'¥ ' + item.amount.toFixed(2)"></span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="pt-2 flex justify-between text-sm font-bold text-amber-900 border-t">
+                        <span>Min 承担总计</span>
+                        <span x-text="'¥ ' + stats.minShareTotal.toFixed(2)"></span>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -231,8 +341,8 @@
             return {
                 activeTab: 'add',
                 headerStatus: '更新数据',
-                actionStatus: '',      // 底部操作状态文本
-                actionType: 'loading', // 状态类型：loading, success, warning
+                actionStatus: '',      
+                actionType: 'loading', 
                 editingId: null,
                 currentRate: {
                     USD: 6.72,
@@ -251,7 +361,6 @@
                 bills: [],
 
                 init() {
-                    // 进入网页时优先读取本地缓存作为秒开兜底，同时立刻从云端拉取最新数据
                     const localCached = localStorage.getItem('egypt_bills_backup');
                     if (localCached) {
                         try { this.bills = JSON.parse(localCached); } catch(e){}
@@ -294,7 +403,6 @@
 
                 async saveData() {
                     try {
-                        // 本地实时备份
                         localStorage.setItem('egypt_bills_backup', JSON.stringify(this.bills));
 
                         let payload = {
@@ -328,10 +436,11 @@
                     return amount;
                 },
 
-                getSplitTypeText(type) {
+                getSplitTypeText(type, payer) {
                     if (type === 'split') return '🤝 两人平分';
                     if (type === 'proxy_hong_for_min') return '💳 Hong代Min付';
                     if (type === 'proxy_min_for_hong') return '💳 Min代Hong付';
+                    if (type === 'personal') return `👤 ${payer || ''}自付`;
                     return type;
                 },
 
@@ -341,7 +450,6 @@
                         return;
                     }
 
-                    // 在表单下方显示正在保存
                     this.actionType = 'loading';
                     this.actionStatus = '⏳ 正在保存账单...';
 
@@ -383,7 +491,6 @@
                     await this.saveData();
                     this.resetForm();
                     
-                    // 延迟 1.5 秒后自动切到明细页，让用户看清保存成功的提示
                     setTimeout(() => {
                         this.activeTab = 'bills';
                         this.actionStatus = '';
@@ -399,7 +506,7 @@
                         currency: bill.currency,
                         category: bill.category,
                         payer: bill.payer,
-                        splitType: bill.splitType,
+                        splitType: bill.splitType || 'split',
                         note: bill.note || ''
                     };
                     this.actionStatus = '';
@@ -419,7 +526,7 @@
                 },
 
                 async deleteBill(id) {
-                    if (confirm('确定要删除这笔账单吗？')) {
+                    if (confirm('⚠️ 确定要删除这笔账单吗？删除后不可恢复。')) {
                         this.bills = this.bills.filter(b => b.id !== id);
                         await this.saveData();
                     }
@@ -435,6 +542,44 @@
                     } else if (confirmText !== null) {
                         alert('输入错误，已取消清空操作。');
                     }
+                },
+
+                // 导出 CSV (可直接用 Excel 打开，带 UTF-8 BOM 防中文乱码)
+                exportCSV() {
+                    if (this.bills.length === 0) {
+                        alert('当前没有任何账单可以导出！');
+                        return;
+                    }
+                    const headers = ['日期', '地点', '类别', '消费金额', '币种', '折算人民币(CNY)', '付款人', '分摊模式', '备注说明'];
+                    const rows = this.bills.map(b => [
+                        b.date,
+                        `"${(b.location || '').replace(/"/g, '""')}"`,
+                        `"${b.category}"`,
+                        b.amount,
+                        b.currency,
+                        b.amountCNY.toFixed(2),
+                        b.payer,
+                        `"${this.getSplitTypeText(b.splitType, b.payer)}"`,
+                        `"${(b.note || '').replace(/"/g, '""')}"`
+                    ]);
+
+                    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', `埃及行程账单明细_${new Date().toISOString().split('T')[0]}.csv`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                },
+
+                // 打印 / 保存 PDF (触发系统打印面板或一键另存为 PDF，兼顾移动端与 PC)
+                printPDF() {
+                    this.activeTab = 'settle';
+                    setTimeout(() => {
+                        window.print();
+                    }, 300);
                 },
 
                 get stats() {
@@ -459,6 +604,9 @@
                             minShareTotal += cny;
                         } else if (bill.splitType === 'proxy_min_for_hong') {
                             hongShareTotal += cny;
+                        } else if (bill.splitType === 'personal') {
+                            if (bill.payer === 'Hong') hongShareTotal += cny;
+                            if (bill.payer === 'Min') minShareTotal += cny;
                         }
                     });
 
@@ -468,6 +616,42 @@
                         hongShareTotal,
                         minShareTotal
                     };
+                },
+
+                get hongCategoryStats() {
+                    const categories = ['交通', '餐饮', '门票', '酒店', '其他'];
+                    return categories.map(cat => {
+                        let amount = 0;
+                        this.bills.filter(b => b.category === cat).forEach(b => {
+                            const cny = b.amountCNY;
+                            if (b.splitType === 'split') {
+                                amount += cny / 2;
+                            } else if (b.splitType === 'proxy_min_for_hong') {
+                                amount += cny;
+                            } else if (b.splitType === 'personal' && b.payer === 'Hong') {
+                                amount += cny;
+                            }
+                        });
+                        return { category: cat, amount };
+                    });
+                },
+
+                get minCategoryStats() {
+                    const categories = ['交通', '餐饮', '门票', '酒店', '其他'];
+                    return categories.map(cat => {
+                        let amount = 0;
+                        this.bills.filter(b => b.category === cat).forEach(b => {
+                            const cny = b.amountCNY;
+                            if (b.splitType === 'split') {
+                                amount += cny / 2;
+                            } else if (b.splitType === 'proxy_hong_for_min') {
+                                amount += cny;
+                            } else if (b.splitType === 'personal' && b.payer === 'Min') {
+                                amount += cny;
+                            }
+                        });
+                        return { category: cat, amount };
+                    });
                 },
 
                 get settlementResultText() {
